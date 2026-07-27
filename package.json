@@ -1,0 +1,82 @@
+{
+  "name": "corkboard",
+  "displayName": "Corkboard",
+  "description": "Corkboard: visual sticky-note boards inside your codebase. Create .board files and fill them with colorful draggable notes.",
+  "version": "0.1.0",
+  "publisher": "nir-elbaz",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "notes",
+    "board",
+    "sticky notes",
+    "kanban",
+    "whiteboard"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "notesBoards.createBoard",
+        "title": "Corkboard: Create New Board"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "notesBoards.createBoard",
+          "group": "navigation@100"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "notesBoards.boardEditor",
+        "displayName": "Notes Board",
+        "selector": [
+          {
+            "filenamePattern": "*.board"
+          },
+          {
+            "filenamePattern": "*.brd"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "languages": [
+      {
+        "id": "notesboard",
+        "extensions": [
+          ".board",
+          ".brd"
+        ],
+        "aliases": [
+          "Notes Board"
+        ],
+        "icon": {
+          "light": "./media/icons/board-file-icon.svg",
+          "dark": "./media/icons/board-file-icon.svg"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
