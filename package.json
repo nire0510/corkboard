@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "nir-elbaz",
   "license": "MIT",
+  "icon": "media/logo.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -73,6 +74,10 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nire0510/corkboard"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -3,3 +3,8 @@ tsconfig.json
 .gitignore
 node_modules/**
 **/*.map
+.vscode/**
+.vscodeignore
+.DS_Store
+**/.DS_Store
+.env
