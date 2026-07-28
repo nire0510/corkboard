@@ -20,7 +20,7 @@
   const addBtn = /** @type {HTMLElement} */ (document.getElementById('add-note-btn'));
   const menuEl = /** @type {HTMLElement} */ (document.getElementById('context-menu'));
 
-  /** @type {{version: number, notes: Array<{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number}>}} */
+  /** @type {{version: number, notes: Array<{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number}>}} */
   let board = { version: 1, notes: [] };
   let zCounter = 1;
 
@@ -44,8 +44,9 @@
       }
       board = { version: parsed.version || 1, notes: [] };
       for (const raw of parsed.notes) {
+        const id = typeof raw.id === 'string' ? raw.id : genId();
         board.notes.push({
-          id: typeof raw.id === 'string' ? raw.id : genId(),
+          id,
           text: typeof raw.text === 'string' ? raw.text : '',
           x: Number.isFinite(raw.x) ? raw.x : 40,
           y: Number.isFinite(raw.y) ? raw.y : 40,
@@ -53,6 +54,9 @@
           height: Number.isFinite(raw.height) ? Math.max(MIN_H, raw.height) : DEFAULT_H,
           color: raw.color in COLORS ? raw.color : DEFAULT_COLOR,
           z: Number.isFinite(raw.z) ? raw.z : ++zCounter,
+          // Notes saved before this field existed don't have a createdAt; the
+          // id itself embeds its creation time (see genId), so fall back to that.
+          createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : deriveCreatedAtFromId(id) ?? Date.now(),
         });
       }
       zCounter = board.notes.reduce((m, n) => Math.max(m, n.z), 1);
@@ -67,6 +71,21 @@
 
   function genId() {
     return 'n-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** @param {string} id */
+  function deriveCreatedAtFromId(id) {
+    const m = /^n-([0-9a-z]+)-/.exec(id);
+    const ts = m ? parseInt(m[1], 36) : NaN;
+    return Number.isFinite(ts) ? ts : null;
+  }
+
+  /** @param {number} ts */
+  function formatDate(ts) {
+    if (!Number.isFinite(ts)) {
+      return '';
+    }
+    return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   // ---------- Rendering ----------
@@ -97,6 +116,13 @@
     el.className = 'note';
     el.dataset.id = id;
 
+    const header = document.createElement('div');
+    header.className = 'note-header';
+    const dateEl = document.createElement('span');
+    dateEl.className = 'note-date';
+    header.appendChild(dateEl);
+    el.appendChild(header);
+
     const textEl = document.createElement('div');
     textEl.className = 'note-text';
     el.appendChild(textEl);
@@ -109,6 +135,9 @@
     el.addEventListener('mousedown', (e) => onNoteMouseDown(e, el));
     handle.addEventListener('mousedown', (e) => onResizeMouseDown(e, el));
     el.addEventListener('dblclick', (e) => {
+      if (/** @type {HTMLElement} */ (e.target).closest('.note-header')) {
+        return;
+      }
       e.stopPropagation();
       startEditing(el);
     });
@@ -130,7 +159,7 @@
 
   /**
    * @param {HTMLElement} el
-   * @param {{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number}} note
+   * @param {{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number}} note
    */
   function syncNoteElement(el, note) {
     el.style.left = note.x + 'px';
@@ -139,6 +168,8 @@
     el.style.height = note.height + 'px';
     el.style.backgroundColor = COLORS[note.color] || COLORS[DEFAULT_COLOR];
     el.style.zIndex = String(note.z);
+    const dateEl = /** @type {HTMLElement} */ (el.querySelector('.note-date'));
+    dateEl.textContent = formatDate(note.createdAt);
     const textEl = /** @type {HTMLElement} */ (el.querySelector('.note-text'));
     if (!el.classList.contains('editing') && textEl.dataset.rawText !== note.text) {
       textEl.innerHTML = renderMarkdown(note.text);
@@ -289,6 +320,7 @@
       height: DEFAULT_H,
       color: DEFAULT_COLOR,
       z: ++zCounter,
+      createdAt: Date.now(),
     };
     board.notes.push(note);
     render();
