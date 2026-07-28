@@ -8,6 +8,7 @@ Visual sticky-note boards that live inside your codebase. Each board is a plain 
 - **Visual editor** — clicking a `.board`/`.brd` file opens it as a visual board.
 - **Add notes** — click the floating **+** button (bottom-right), or right-click an empty spot → *Create a note*. New notes are immediately editable.
 - **Edit text** — double-click a note to edit; click outside or press `Esc` to commit.
+- **Markdown support** — note text renders as Markdown (headers, bold/italic, strikethrough, inline code, links, blockquotes, lists, and fenced code blocks) whenever a note isn't being edited.
 - **Move & resize** — drag notes anywhere; drag the bottom-right corner handle to resize.
 - **Note context menu** — right-click a note for *Delete note* and *Change colors…* (hover reveals 5 color swatches: yellow, pink, blue, green, orange).
 - **Board context menu** — right-click empty space for *Create a note* and *Delete all notes*.
