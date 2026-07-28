@@ -57,9 +57,12 @@ body {
   height: 100%;
   padding: 10px 12px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: auto;
   overflow-wrap: break-word;
-  white-space: pre-wrap;
+  /* Rendered markdown: block tags (p, li, ...) handle layout, so let normal
+     HTML whitespace collapsing apply. Raw-source edit mode below overrides
+     this back to pre-wrap, since there newlines are the content. */
+  white-space: normal;
   font-family: var(--vscode-font-family, sans-serif);
   font-size: 13px;
   line-height: 1.45;
@@ -72,13 +75,94 @@ body {
 
 .note.editing .note-text {
   user-select: text;
-  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .note-text:empty::before {
   content: 'Type a note…';
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* ---------- Rendered markdown ---------- */
+
+.note-text p,
+.note-text ul,
+.note-text ol,
+.note-text blockquote,
+.note-text pre,
+.note-text h1,
+.note-text h2,
+.note-text h3,
+.note-text h4,
+.note-text h5,
+.note-text h6 {
+  margin: 0 0 6px;
+}
+
+.note-text > :last-child {
+  margin-bottom: 0;
+}
+
+.note-text h1,
+.note-text h2,
+.note-text h3,
+.note-text h4,
+.note-text h5,
+.note-text h6 {
+  line-height: 1.25;
+}
+
+.note-text h1 {
+  font-size: 1.35em;
+}
+
+.note-text h2 {
+  font-size: 1.2em;
+}
+
+.note-text h3,
+.note-text h4,
+.note-text h5,
+.note-text h6 {
+  font-size: 1.05em;
+}
+
+.note-text ul,
+.note-text ol {
+  padding-left: 1.3em;
+}
+
+.note-text blockquote {
+  margin-left: 0;
+  padding-left: 8px;
+  border-left: 3px solid rgba(0, 0, 0, 0.25);
+  opacity: 0.85;
+}
+
+.note-text code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.92em;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.note-text pre {
+  overflow-x: auto;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.note-text pre code {
+  background: none;
+  padding: 0;
+}
+
+.note-text a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .note .resize-handle {

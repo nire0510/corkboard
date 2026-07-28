@@ -83,6 +83,13 @@ export class BoardEditorProvider implements vscode.CustomTextEditorProvider {
         case 'error':
           vscode.window.showErrorMessage(`Notes Boards: ${message.message}`);
           break;
+        case 'openLink': {
+          const uri = vscode.Uri.parse(message.url);
+          if (uri.scheme === 'http' || uri.scheme === 'https' || uri.scheme === 'mailto') {
+            vscode.env.openExternal(uri);
+          }
+          break;
+        }
       }
     });
   }

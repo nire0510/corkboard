@@ -140,14 +140,136 @@
     el.style.backgroundColor = COLORS[note.color] || COLORS[DEFAULT_COLOR];
     el.style.zIndex = String(note.z);
     const textEl = /** @type {HTMLElement} */ (el.querySelector('.note-text'));
-    if (!el.classList.contains('editing') && textEl.innerText !== note.text) {
-      textEl.innerText = note.text;
+    if (!el.classList.contains('editing') && textEl.dataset.rawText !== note.text) {
+      textEl.innerHTML = renderMarkdown(note.text);
+      textEl.dataset.rawText = note.text;
     }
   }
 
   /** @param {string} id */
   function getNote(id) {
     return board.notes.find((n) => n.id === id);
+  }
+
+  // ---------- Markdown rendering ----------
+  // Minimal, dependency-free markdown -> sanitized HTML. Block-level markers
+  // (#, >, -, digits) are matched against the raw line; the text content of
+  // each block is HTML-escaped in renderInline before any tags are added, so
+  // raw tags in note text can never reach the DOM as elements.
+
+  /** @param {string} s */
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /** @param {string} text raw (unescaped) inline text */
+  function renderInline(text) {
+    // Inline code and links are extracted to placeholder tokens first, so
+    // their literal contents (snake_case identifiers, underscores in URLs)
+    // never get mangled by the emphasis passes below. Sentinels use Unicode
+    // Private Use Area code points, which never occur in normal note text.
+    /** @type {string[]} */
+    const tokens = [];
+    /** @param {string} html */
+    const store = (html) => {
+      tokens.push(html);
+      return `\uE000${tokens.length - 1}\uE001`;
+    };
+
+    let out = escapeHtml(text)
+      .replace(/`([^`]+)`/g, (_m, code) => store(`<code>${code}</code>`))
+      .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g, (_m, label, url) => store(`<a href="${url}">${label}</a>`))
+      .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_m, a, b) => `<strong>${a || b}</strong>`)
+      .replace(/\*([^*]+)\*|_([^_]+)_/g, (_m, a, b) => `<em>${a || b}</em>`)
+      .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+    let prev;
+    do {
+      prev = out;
+      out = out.replace(/\uE000(\d+)\uE001/g, (_m, i) => tokens[Number(i)]);
+    } while (out !== prev);
+    return out;
+  }
+
+  /** @param {string} raw */
+  function renderMarkdown(raw) {
+    const lines = raw.split('\n');
+    const htmlParts = [];
+    /** @type {{type: 'ul'|'ol', items: string[]} | null} */
+    let list = null;
+    const flushList = () => {
+      if (list) {
+        const tag = list.type;
+        htmlParts.push(`<${tag}>${list.items.map((it) => `<li>${renderInline(it)}</li>`).join('')}</${tag}>`);
+        list = null;
+      }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (/^```/.test(line)) {
+        flushList();
+        const code = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) {
+          code.push(lines[i]);
+          i++;
+        }
+        htmlParts.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+        continue;
+      }
+
+      const header = line.match(/^(#{1,6})\s+(.*)$/);
+      if (header) {
+        flushList();
+        const level = header[1].length;
+        htmlParts.push(`<h${level}>${renderInline(header[2])}</h${level}>`);
+        continue;
+      }
+
+      const quote = line.match(/^>\s?(.*)$/);
+      if (quote) {
+        flushList();
+        htmlParts.push(`<blockquote>${renderInline(quote[1])}</blockquote>`);
+        continue;
+      }
+
+      const ul = line.match(/^[-*]\s+(.*)$/);
+      if (ul) {
+        if (!list || list.type !== 'ul') {
+          flushList();
+          list = { type: 'ul', items: [] };
+        }
+        list.items.push(ul[1]);
+        continue;
+      }
+
+      const ol = line.match(/^\d+\.\s+(.*)$/);
+      if (ol) {
+        if (!list || list.type !== 'ol') {
+          flushList();
+          list = { type: 'ol', items: [] };
+        }
+        list.items.push(ol[1]);
+        continue;
+      }
+
+      flushList();
+
+      if (line.trim() === '') {
+        continue;
+      }
+
+      htmlParts.push(`<p>${renderInline(line)}</p>`);
+    }
+    flushList();
+    return htmlParts.join('');
   }
 
   // ---------- Note creation / deletion ----------
@@ -219,7 +341,10 @@
   /** @param {HTMLElement} el */
   function startEditing(el) {
     const textEl = /** @type {HTMLElement} */ (el.querySelector('.note-text'));
+    const note = getNote(el.dataset.id || '');
     el.classList.add('editing');
+    // Switch from rendered markdown back to the raw source for editing.
+    textEl.innerText = note ? note.text : '';
     textEl.contentEditable = 'true';
     textEl.focus();
     // put caret at the end
@@ -245,6 +370,10 @@
     if (note && note.text !== textEl.innerText) {
       note.text = textEl.innerText;
       pushToHost();
+    }
+    if (note) {
+      textEl.innerHTML = renderMarkdown(note.text);
+      textEl.dataset.rawText = note.text;
     }
   }
 
@@ -451,6 +580,25 @@
       if (editing) {
         stopEditing(/** @type {HTMLElement} */ (editing));
       }
+    }
+  });
+
+  // Rendered markdown links can't navigate inside the webview (CSP + iframe
+  // sandboxing), so hand them off to the extension host to open externally.
+  boardEl.addEventListener('click', (e) => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const anchor = target.closest ? target.closest('a') : null;
+    if (!anchor) {
+      return;
+    }
+    const noteEl = anchor.closest('.note');
+    if (noteEl && noteEl.classList.contains('editing')) {
+      return;
+    }
+    e.preventDefault();
+    const href = anchor.getAttribute('href');
+    if (href) {
+      vscode.postMessage({ type: 'openLink', url: href });
     }
   });
 
