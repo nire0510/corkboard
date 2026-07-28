@@ -135,6 +135,11 @@
     el.addEventListener('mousedown', (e) => onNoteMouseDown(e, el));
     handle.addEventListener('mousedown', (e) => onResizeMouseDown(e, el));
     el.addEventListener('dblclick', (e) => {
+      if (el.classList.contains('editing')) {
+        // Already editing: let the native double-click-to-select-word
+        // behavior happen instead of resetting the caret to the end.
+        return;
+      }
       if (/** @type {HTMLElement} */ (e.target).closest('.note-header')) {
         return;
       }
@@ -227,25 +232,64 @@
     return out;
   }
 
+  /** @param {string} line */
+  function matchListItem(line) {
+    const m = line.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
+    if (!m) {
+      return null;
+    }
+    return { indent: m[1].length, type: /** @type {'ul'|'ol'} */ (m[2] === '-' || m[2] === '*' ? 'ul' : 'ol'), content: m[3] };
+  }
+
+  /**
+   * Consumes a run of list-item lines starting at index `i` whose indent is
+   * >= baseIndent. Items indented deeper than the current run nest as a
+   * sub-list inside the preceding <li>, so e.g. two extra leading spaces
+   * produce one extra level of nesting.
+   * @param {string[]} lines
+   * @param {number} i
+   * @param {number} baseIndent
+   */
+  function parseList(lines, i, baseIndent) {
+    /** @type {Array<{content: string, children: string}>} */
+    const items = [];
+    /** @type {'ul'|'ol'|null} */
+    let type = null;
+    while (i < lines.length) {
+      const item = matchListItem(lines[i]);
+      if (!item || item.indent < baseIndent) {
+        break;
+      }
+      if (item.indent > baseIndent) {
+        if (items.length === 0) {
+          break;
+        }
+        const child = parseList(lines, i, item.indent);
+        items[items.length - 1].children += child.html;
+        i = child.next;
+        continue;
+      }
+      if (type && item.type !== type) {
+        break;
+      }
+      type = item.type;
+      items.push({ content: item.content, children: '' });
+      i++;
+    }
+    const tag = type || 'ul';
+    const html = `<${tag}>${items.map((it) => `<li>${renderInline(it.content)}${it.children}</li>`).join('')}</${tag}>`;
+    return { html, next: i };
+  }
+
   /** @param {string} raw */
   function renderMarkdown(raw) {
     const lines = raw.split('\n');
     const htmlParts = [];
-    /** @type {{type: 'ul'|'ol', items: string[]} | null} */
-    let list = null;
-    const flushList = () => {
-      if (list) {
-        const tag = list.type;
-        htmlParts.push(`<${tag}>${list.items.map((it) => `<li>${renderInline(it)}</li>`).join('')}</${tag}>`);
-        list = null;
-      }
-    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
       if (/^```/.test(line)) {
-        flushList();
         const code = [];
         i++;
         while (i < lines.length && !/^```/.test(lines[i])) {
@@ -258,7 +302,6 @@
 
       const header = line.match(/^(#{1,6})\s+(.*)$/);
       if (header) {
-        flushList();
         const level = header[1].length;
         htmlParts.push(`<h${level}>${renderInline(header[2])}</h${level}>`);
         continue;
@@ -266,32 +309,17 @@
 
       const quote = line.match(/^>\s?(.*)$/);
       if (quote) {
-        flushList();
         htmlParts.push(`<blockquote>${renderInline(quote[1])}</blockquote>`);
         continue;
       }
 
-      const ul = line.match(/^[-*]\s+(.*)$/);
-      if (ul) {
-        if (!list || list.type !== 'ul') {
-          flushList();
-          list = { type: 'ul', items: [] };
-        }
-        list.items.push(ul[1]);
+      const listItem = matchListItem(line);
+      if (listItem) {
+        const list = parseList(lines, i, listItem.indent);
+        htmlParts.push(list.html);
+        i = list.next - 1;
         continue;
       }
-
-      const ol = line.match(/^\d+\.\s+(.*)$/);
-      if (ol) {
-        if (!list || list.type !== 'ol') {
-          flushList();
-          list = { type: 'ol', items: [] };
-        }
-        list.items.push(ol[1]);
-        continue;
-      }
-
-      flushList();
 
       if (line.trim() === '') {
         continue;
@@ -299,7 +327,6 @@
 
       htmlParts.push(`<p>${renderInline(line)}</p>`);
     }
-    flushList();
     return htmlParts.join('');
   }
 
@@ -396,11 +423,15 @@
       return;
     }
     const textEl = /** @type {HTMLElement} */ (el.querySelector('.note-text'));
+    const note = getNote(el.dataset.id || '');
+    // Read innerText while still in 'editing' layout (white-space: pre-wrap):
+    // once the class is removed, white-space reverts to 'normal' and the
+    // browser collapses leading/repeated whitespace before innerText sees it.
+    const newText = textEl.innerText;
     el.classList.remove('editing');
     textEl.contentEditable = 'false';
-    const note = getNote(el.dataset.id || '');
-    if (note && note.text !== textEl.innerText) {
-      note.text = textEl.innerText;
+    if (note && note.text !== newText) {
+      note.text = newText;
       pushToHost();
     }
     if (note) {
