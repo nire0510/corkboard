@@ -73,7 +73,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package"
+    "package": "vsce package",
+    "publish": "export $(cat .env | xargs) && npm run vscode:prepublish && npx vsce publish minor -p $VSCE_PAT && git push && git push --tags"
   },
   "repository": {
     "type": "git",
