@@ -2,7 +2,7 @@
   "name": "corkboard",
   "displayName": "Corkboard",
   "description": "Corkboard: visual sticky-note boards inside your codebase. Create .board files and fill them with colorful draggable notes.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "nir-elbaz",
   "license": "MIT",
   "icon": "media/logo.png",
