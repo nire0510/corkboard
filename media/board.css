@@ -205,18 +205,19 @@ body {
       rgba(0, 0, 0, 0.18) 90% 100%);
 }
 
-/* ---------- Add button ---------- */
+/* ---------- Floating buttons ---------- */
 
-#add-note-btn {
+#add-note-btn,
+#export-png-btn {
   position: fixed;
   right: 24px;
-  bottom: 24px;
   width: 48px;
   height: 48px;
   border: none;
   border-radius: 50%;
-  font-size: 28px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   color: var(--vscode-button-foreground);
   background-color: var(--vscode-button-background);
@@ -224,8 +225,24 @@ body {
   z-index: 2000;
 }
 
-#add-note-btn:hover {
+#add-note-btn:hover,
+#export-png-btn:hover {
   background-color: var(--vscode-button-hoverBackground);
+}
+
+#add-note-btn {
+  bottom: 24px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+#export-png-btn {
+  bottom: 84px;
+}
+
+#export-png-btn svg {
+  width: 22px;
+  height: 22px;
 }
 
 /* ---------- Context menu ---------- */

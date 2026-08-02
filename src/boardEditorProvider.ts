@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 /**
@@ -83,10 +84,30 @@ export class BoardEditorProvider implements vscode.CustomTextEditorProvider {
         case 'error':
           vscode.window.showErrorMessage(`Notes Boards: ${message.message}`);
           break;
+        case 'info':
+          vscode.window.showInformationMessage(`Notes Boards: ${message.message}`);
+          break;
         case 'openLink': {
           const uri = vscode.Uri.parse(message.url);
           if (uri.scheme === 'http' || uri.scheme === 'https' || uri.scheme === 'mailto') {
             vscode.env.openExternal(uri);
+          }
+          break;
+        }
+        case 'exportPng': {
+          const base64 = (message.dataUrl as string).replace(/^data:image\/png;base64,/, '');
+          const buffer = Buffer.from(base64, 'base64');
+          const baseName = path.basename(document.uri.fsPath).replace(/\.[^.]+$/, '') || 'board';
+          const defaultUri = vscode.Uri.file(
+            path.join(path.dirname(document.uri.fsPath), `${baseName}.png`)
+          );
+          const saveUri = await vscode.window.showSaveDialog({
+            defaultUri,
+            filters: { 'PNG Image': ['png'] },
+          });
+          if (saveUri) {
+            await vscode.workspace.fs.writeFile(saveUri, buffer);
+            vscode.window.showInformationMessage(`Board exported to ${path.basename(saveUri.fsPath)}.`);
           }
           break;
         }
@@ -115,6 +136,12 @@ export class BoardEditorProvider implements vscode.CustomTextEditorProvider {
 </head>
 <body>
   <div id="board" tabindex="0"></div>
+  <button id="export-png-btn" title="Export board as PNG" aria-label="Export board as PNG">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+      <circle cx="12" cy="13" r="4"></circle>
+    </svg>
+  </button>
   <button id="add-note-btn" title="Add note" aria-label="Add note">+</button>
   <div id="context-menu" class="context-menu" hidden></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>

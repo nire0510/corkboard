@@ -18,6 +18,7 @@
 
   const boardEl = /** @type {HTMLElement} */ (document.getElementById('board'));
   const addBtn = /** @type {HTMLElement} */ (document.getElementById('add-note-btn'));
+  const exportBtn = /** @type {HTMLElement} */ (document.getElementById('export-png-btn'));
   const menuEl = /** @type {HTMLElement} */ (document.getElementById('context-menu'));
 
   /** @type {{version: number, notes: Array<{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number,updatedAt:number|null}>}} */
@@ -336,6 +337,214 @@
     return htmlParts.join('');
   }
 
+  // ---------- Export ----------
+
+  function exportBoardAsPng() {
+    // Clicking the button doesn't blur a note mid-edit, so commit it first
+    // or the export would capture stale (pre-edit) text.
+    const editing = boardEl.querySelector('.note.editing');
+    if (editing) {
+      stopEditing(/** @type {HTMLElement} */ (editing));
+    }
+
+    if (board.notes.length === 0) {
+      vscode.postMessage({ type: 'info', message: 'Nothing to export — add a note first.' });
+      return;
+    }
+
+    const PADDING = 40;
+    const minX = Math.min(...board.notes.map((n) => n.x));
+    const minY = Math.min(...board.notes.map((n) => n.y));
+    const maxX = Math.max(...board.notes.map((n) => n.x + n.width));
+    const maxY = Math.max(...board.notes.map((n) => n.y + n.height));
+    const width = maxX - minX + PADDING * 2;
+    const height = maxY - minY + PADDING * 2;
+
+    // Oversample for a crisp export, but stay under Chromium's max canvas
+    // dimension (~16384px) so toDataURL doesn't silently return a blank image.
+    const MAX_DIM = 16384;
+    const scale = Math.max(0.1, Math.min(2, MAX_DIM / width, MAX_DIM / height));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const sampleTextEl = boardEl.querySelector('.note-text');
+    const fontFamily = sampleTextEl ? getComputedStyle(sampleTextEl).fontFamily : 'sans-serif';
+
+    const sorted = [...board.notes].sort((a, b) => a.z - b.z);
+    for (const note of sorted) {
+      drawNote(ctx, note, minX - PADDING, minY - PADDING, fontFamily);
+    }
+
+    const dataUrl = canvas.toDataURL('image/png');
+    vscode.postMessage({ type: 'exportPng', dataUrl });
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{x:number,y:number,width:number,height:number,color:string,text:string,createdAt:number,updatedAt:number|null}} note
+   * @param {number} offsetX
+   * @param {number} offsetY
+   * @param {string} fontFamily
+   */
+  function drawNote(ctx, note, offsetX, offsetY, fontFamily) {
+    const x = note.x - offsetX;
+    const y = note.y - offsetY;
+    const { width, height } = note;
+    const radius = 6;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = COLORS[note.color] || COLORS[DEFAULT_COLOR];
+    roundRectPath(ctx, x, y, width, height, radius);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    roundRectPath(ctx, x, y, width, height, radius);
+    ctx.clip();
+
+    ctx.fillStyle = 'rgba(31, 35, 40, 0.6)';
+    ctx.font = `10px ${fontFamily}`;
+    ctx.textBaseline = 'top';
+    let dateLine = formatDate(note.createdAt);
+    if (Number.isFinite(note.updatedAt)) {
+      dateLine += ' · ' + formatDate(/** @type {number} */ (note.updatedAt));
+    }
+    ctx.fillText(dateLine, x + 12, y + 6, width - 24);
+
+    ctx.fillStyle = '#1f2328';
+    ctx.font = `13px ${fontFamily}`;
+    wrapText(ctx, toPlainText(note.text), x + 12, y + 26, width - 24, height - 36, 19);
+    ctx.restore();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {number} r
+   */
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /**
+   * Word-wraps text (respecting existing newlines) inside a box, clipping
+   * once it would overflow maxHeight.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   * @param {number} x
+   * @param {number} y
+   * @param {number} maxWidth
+   * @param {number} maxHeight
+   * @param {number} lineHeight
+   */
+  function wrapText(ctx, text, x, y, maxWidth, maxHeight, lineHeight) {
+    let curY = y;
+    for (const paragraph of text.split('\n')) {
+      const indent = /^ */.exec(paragraph)[0];
+      const indentWidth = ctx.measureText(indent).width;
+      const lineX = x + indentWidth;
+      const lineMaxWidth = maxWidth - indentWidth;
+      const words = paragraph.slice(indent.length).split(' ');
+      let line = '';
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (line && ctx.measureText(test).width > lineMaxWidth) {
+          if (curY + lineHeight > y + maxHeight) {
+            return;
+          }
+          ctx.fillText(line, lineX, curY);
+          curY += lineHeight;
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      if (curY + lineHeight > y + maxHeight) {
+        return;
+      }
+      ctx.fillText(line, lineX, curY);
+      curY += lineHeight;
+    }
+  }
+
+  /**
+   * Strips markdown syntax down to plain text for the canvas export, which
+   * can't render the HTML tags renderMarkdown produces. Mirrors the block
+   * markers handled by renderMarkdown and the inline patterns in
+   * renderInline, minus the HTML wrapping.
+   * @param {string} raw
+   */
+  function toPlainText(raw) {
+    const lines = raw.split('\n');
+    const out = [];
+    let inFence = false;
+    for (let line of lines) {
+      if (/^```/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) {
+        out.push(line);
+        continue;
+      }
+      line = line.replace(/^(#{1,6})\s+/, '');
+      line = line.replace(/^>\s?/, '');
+      const listItem = line.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
+      if (listItem) {
+        line = listItem[1] + '• ' + listItem[3];
+      }
+      out.push(stripInline(line));
+    }
+    return out.join('\n');
+  }
+
+  /** @param {string} text */
+  function stripInline(text) {
+    /** @type {string[]} */
+    const tokens = [];
+    /** @param {string} s */
+    const store = (s) => {
+      tokens.push(s);
+      return `${tokens.length - 1}`;
+    };
+
+    let out = text
+      .replace(/`([^`]+)`/g, (_m, code) => store(code))
+      .replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]+\)/g, (_m, label) => store(label))
+      .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_m, a, b) => a || b)
+      .replace(/\*([^*]+)\*|_([^_]+)_/g, (_m, a, b) => a || b)
+      .replace(/~~([^~]+)~~/g, '$1');
+
+    let prev;
+    do {
+      prev = out;
+      out = out.replace(/(\d+)/g, (_m, i) => tokens[Number(i)]);
+    } while (out !== prev);
+    return out;
+  }
+
   // ---------- Note creation / deletion ----------
 
   /**
@@ -634,6 +843,7 @@
   // ---------- Global listeners ----------
 
   addBtn.addEventListener('click', () => createNoteAtFreeSpot());
+  exportBtn.addEventListener('click', () => exportBoardAsPng());
 
   boardEl.addEventListener('contextmenu', (e) => {
     // Only for empty board area (notes handle their own contextmenu).
