@@ -20,7 +20,7 @@
   const addBtn = /** @type {HTMLElement} */ (document.getElementById('add-note-btn'));
   const menuEl = /** @type {HTMLElement} */ (document.getElementById('context-menu'));
 
-  /** @type {{version: number, notes: Array<{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number}>}} */
+  /** @type {{version: number, notes: Array<{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number,updatedAt:number|null}>}} */
   let board = { version: 1, notes: [] };
   let zCounter = 1;
 
@@ -57,6 +57,7 @@
           // Notes saved before this field existed don't have a createdAt; the
           // id itself embeds its creation time (see genId), so fall back to that.
           createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : deriveCreatedAtFromId(id) ?? Date.now(),
+          updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : null,
         });
       }
       zCounter = board.notes.reduce((m, n) => Math.max(m, n.z), 1);
@@ -121,6 +122,9 @@
     const dateEl = document.createElement('span');
     dateEl.className = 'note-date';
     header.appendChild(dateEl);
+    const updatedEl = document.createElement('span');
+    updatedEl.className = 'note-updated-date';
+    header.appendChild(updatedEl);
     el.appendChild(header);
 
     const textEl = document.createElement('div');
@@ -164,7 +168,7 @@
 
   /**
    * @param {HTMLElement} el
-   * @param {{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number}} note
+   * @param {{id:string,text:string,x:number,y:number,width:number,height:number,color:string,z:number,createdAt:number,updatedAt:number|null}} note
    */
   function syncNoteElement(el, note) {
     el.style.left = note.x + 'px';
@@ -175,6 +179,8 @@
     el.style.zIndex = String(note.z);
     const dateEl = /** @type {HTMLElement} */ (el.querySelector('.note-date'));
     dateEl.textContent = formatDate(note.createdAt);
+    const updatedEl = /** @type {HTMLElement} */ (el.querySelector('.note-updated-date'));
+    updatedEl.textContent = Number.isFinite(note.updatedAt) ? ` · ${formatDate(/** @type {number} */ (note.updatedAt))}` : '';
     const textEl = /** @type {HTMLElement} */ (el.querySelector('.note-text'));
     if (!el.classList.contains('editing') && textEl.dataset.rawText !== note.text) {
       textEl.innerHTML = renderMarkdown(note.text);
@@ -348,6 +354,7 @@
       color: DEFAULT_COLOR,
       z: ++zCounter,
       createdAt: Date.now(),
+      updatedAt: null,
     };
     board.notes.push(note);
     render();
@@ -432,6 +439,7 @@
     textEl.contentEditable = 'false';
     if (note && note.text !== newText) {
       note.text = newText;
+      note.updatedAt = Date.now();
       pushToHost();
     }
     if (note) {

@@ -59,8 +59,15 @@ body {
   padding: 5px 12px 0;
   font-size: 10px;
   line-height: 1.3;
-  opacity: 0.55;
   font-family: var(--vscode-font-family, sans-serif);
+}
+
+.note-date {
+  opacity: 0.55;
+}
+
+.note-updated-date {
+  opacity: 0.75;
 }
 
 .note-text {
